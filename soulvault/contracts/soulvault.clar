@@ -15,6 +15,7 @@
 (define-constant err-category-inactive (err u108))
 (define-constant err-invalid-guardian (err u109))
 (define-constant err-invalid-input (err u110))
+(define-constant err-empty-string (err u111))
 
 ;; Data Variables
 (define-data-var next-token-id uint u1)
@@ -89,16 +90,22 @@
 ;; Input Validation Functions
 
 (define-private (is-valid-category (category (string-ascii 20)))
-    (match (map-get? categories { category: category })
-        category-data (get active category-data)
-        false
+    (and 
+        (not (is-eq category ""))
+        (match (map-get? categories { category: category })
+            category-data (get active category-data)
+            false
+        )
     )
 )
 
 (define-private (is-valid-guardian (guardian principal))
-    (match (map-get? emergency-guardians { guardian: guardian })
-        guardian-data (get active guardian-data)
-        false
+    (and
+        (not (is-eq guardian contract-owner))
+        (match (map-get? emergency-guardians { guardian: guardian })
+            guardian-data (get active guardian-data)
+            false
+        )
     )
 )
 
@@ -106,11 +113,16 @@
     (< u0 token-id)
 )
 
+(define-private (is-valid-string (str (string-ascii 200)))
+    (not (is-eq str ""))
+)
+
 ;; Administrative Functions
 
 (define-public (add-category (category (string-ascii 20)))
     (begin
         (asserts! (is-eq tx-sender contract-owner) err-not-authorized)
+        (asserts! (not (is-eq category "")) err-empty-string)
         (asserts! (is-none (map-get? categories { category: category })) err-already-exists)
         (map-set categories 
             { category: category }
@@ -127,6 +139,7 @@
 (define-public (deactivate-category (category (string-ascii 20)))
     (begin
         (asserts! (is-eq tx-sender contract-owner) err-not-authorized)
+        (asserts! (not (is-eq category "")) err-empty-string)
         (asserts! (is-valid-category category) err-invalid-input)
         (map-set categories 
             { category: category }
@@ -142,6 +155,7 @@
 (define-public (add-guardian (new-guardian principal))
     (begin
         (asserts! (is-eq tx-sender contract-owner) err-not-authorized)
+        (asserts! (not (is-eq new-guardian contract-owner)) err-invalid-input)
         (asserts! (is-none (map-get? emergency-guardians { guardian: new-guardian })) err-already-exists)
         (map-set emergency-guardians
             { guardian: new-guardian }
@@ -183,6 +197,9 @@
     (let
         ((token-id (var-get next-token-id)))
         (asserts! (is-eq tx-sender contract-owner) err-not-authorized)
+        (asserts! (not (is-eq recipient contract-owner)) err-invalid-input)
+        (asserts! (not (is-eq name "")) err-empty-string)
+        (asserts! (not (is-eq description "")) err-empty-string)
         (asserts! (is-valid-category category) err-category-inactive)
         
         ;; Create token details
@@ -235,6 +252,7 @@
         
         ;; Verify ownership, cooldown, and valid token-id
         (asserts! (is-valid-token-id token-id) err-invalid-input)
+        (asserts! (is-valid-string reason) err-empty-string)
         (asserts! (is-owner token-id tx-sender) err-not-authorized)
         (asserts! (> current-time (+ (get last-emergency user-data) 
                                     (var-get emergency-cooldown))) 
